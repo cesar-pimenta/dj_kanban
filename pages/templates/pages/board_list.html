@@ -25,7 +25,6 @@
 
 {% block content %}
 <div class="d-flex">
-    <!-- Main content -->
     <div class="container-fluid mt-5">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h3>Todos os Quadros</h3>
@@ -74,7 +73,7 @@
     </div>
 </div>
 
-<!-- Modal for Creating New Boards -->
+<!-- Modal para criar novos Boards -->
 <div class="modal fade" id="newBoardModal" tabindex="-1" aria-labelledby="newBoardModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -95,7 +94,7 @@
     </div>
 </div>
 
-<!-- Modal for Deleting Boards -->
+<!-- Modal para deleta os Boards -->
 <div class="modal fade" id="deleteBoardModal" tabindex="-1" aria-labelledby="deleteBoardModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -175,8 +174,7 @@
                         </li>
                     `;
                     boardList.insertAdjacentHTML('beforeend', newBoardItem);
-                    
-                    // Remover o card vazio se presente
+
                     var emptyCard = document.getElementById('emptyCard');
                     if (emptyCard) {
                         emptyCard.remove();
@@ -212,8 +210,7 @@
                         boardItem.remove();
                     }
                     deleteBoardModal.hide();
-                    
-                    // Adicionar o card vazio se não houver mais boards
+
                     if (!document.querySelectorAll('.board-card').length) {
                         var emptyCard = `
                             <div class="col board-card" id="emptyCard">

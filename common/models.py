@@ -1,5 +1,6 @@
 from django.db import models
 
+
 class KanbanBoard(models.Model):
     name = models.CharField(max_length=255)
 
@@ -7,14 +8,17 @@ class KanbanBoard(models.Model):
         self.columns.all().delete()
         super().delete(*args, **kwargs)
 
+
 class Column(models.Model):
     name = models.CharField(max_length=255)
     board = models.ForeignKey(KanbanBoard, related_name='columns', on_delete=models.CASCADE)
     order = models.PositiveIntegerField(default=0)
+    is_movable = models.BooleanField(default=True)
 
     def delete(self, *args, **kwargs):
         self.cards.all().delete()
         super().delete(*args, **kwargs)
+
 
 class Card(models.Model):
     title = models.CharField(max_length=255)

@@ -13,12 +13,32 @@
         border: 2px dashed #ccc;
         border-radius: 5px;
         position: relative;
+        max-height: 400px; 
+        overflow-y: auto;
+    }
+    .column-draggable {
+        cursor: move;
+    }
+    #columnsContainer {
+        display: flex;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        max-width: 100%;
+        height: calc(100vh - 150px);
+    }
+    .container {
+        height: calc(100vh - 100px);
+        overflow: hidden;
+    }
+    .column {
+        flex: 0 0 auto; 
+        width: 250px; 
+        margin-right: 10px;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-
 <div class="container mt-5">
     <!-- Breadcrumb -->
     <nav aria-label="breadcrumb">
@@ -31,15 +51,17 @@
     <h3>{{ board.name }}</h3>
     <button id="addColumnBtn" class="btn btn-success mb-3">Adicionar Nova Coluna</button>
     <button id="deleteBoardBtn" class="btn btn-danger mb-3">Excluir Quadro</button>
-    <div class="row" id="columnsContainer">
+    <div id="columnsContainer">
         {% for column in columns %}
-        <div class="col-md-3 mb-3">
+        <div id="column-{{ column.id }}" class="column column-draggable" {% if not column.is_movable %}data-ismovable="false"{% else %}draggable="true"{% endif %}>
             <h5>{{ column.name }}</h5>
             <button class="btn btn-primary mb-3" onclick="openNewItemModal('{{ column.id }}')">Adicionar Novo</button>
+            {% if column.is_movable %}
             <button class="btn btn-danger mb-3" onclick="deleteColumn('{{ column.id }}')">Excluir Coluna</button>
-            <div id="column-{{ column.id }}" class="dropzone">
+            {% endif %}
+            <div id="column-cards-{{ column.id }}" class="dropzone">
                 {% for card in column.cards.all %}
-                <div id="card-{{ card.id }}" class="card mb-2 draggable" draggable="true">
+                <div id="card-{{ card.id }}" class="card mb-2 draggable" draggable="true" data-toggle="modal" data-target="#cardDetailModal" data-details="{{ card.details }}">
                     <div class="card-body">
                         <h5 class="card-title">{{ card.title }}</h5>
                         <p class="card-text">{{ card.description }}</p>
@@ -53,7 +75,7 @@
     </div>
 </div>
 
-<!-- Modal for Adding New Columns -->
+<!-- Modal para novas Colunas -->
 <div class="modal fade" id="newColumnModal" tabindex="-1" aria-labelledby="newColumnModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -67,6 +89,10 @@
                         <label for="columnName" class="form-label">Nome da Coluna</label>
                         <input type="text" class="form-control" id="columnName" required>
                     </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="isMovable">
+                        <label for="isMovable" class="form-check-label">Coluna Móvel</label>
+                    </div>
                     <input type="hidden" id="boardId" value="{{ board.id }}">
                     <button type="submit" class="btn btn-primary">Adicionar</button>
                 </form>
@@ -75,7 +101,7 @@
     </div>
 </div>
 
-<!-- Modal for Adding New Items -->
+<!-- Modal para novos Cards -->
 <div class="modal fade" id="newItemModal" tabindex="-1" aria-labelledby="newItemModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -101,238 +127,355 @@
     </div>
 </div>
 
+<!-- Modal para detalhes do Card -->
+<div class="modal fade" id="cardDetailModal" tabindex="-1" aria-labelledby="cardDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="cardDetailModalLabel">Detalhes do Card</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p id="cardDetailsContent">Detalhes aqui...</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    document.addEventListener('DOMContentLoaded', function () {
-        var columnsContainer = document.getElementById('columnsContainer');
-        var addColumnBtn = document.getElementById('addColumnBtn');
-        var deleteBoardBtn = document.getElementById('deleteBoardBtn');
-        var boardId = document.getElementById('boardId').value;
-
-        addColumnBtn.addEventListener('click', function () {
-            var newColumnModal = new bootstrap.Modal(document.getElementById('newColumnModal'));
-            newColumnModal.show();
+document.addEventListener('DOMContentLoaded', function () {
+    var columnsContainer = document.getElementById('columnsContainer');
+    
+    function updateColumnOrder() {
+        var columnOrder = [];
+        document.querySelectorAll('.column-draggable').forEach((column, index) => {
+            columnOrder.push({id: column.id.replace('column-', ''), order: index});
         });
 
-        deleteBoardBtn.addEventListener('click', function () {
-            if (confirm('Tem certeza de que deseja excluir este quadro?')) {
-                fetch(`/delete_board/${boardId}/`, {
-                    method: 'DELETE',
-                    headers: {
-                        'X-CSRFToken': '{{ csrf_token }}'
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        window.location.href = "{% url 'board_list' %}";
-                    }
-                });
+        fetch("{% url 'update_column_order' %}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({column_order: columnOrder})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status !== 'success') {
+                console.error('Failed to update column order');
             }
         });
+    }
 
-        var newColumnForm = document.getElementById('newColumnForm');
-        newColumnForm.addEventListener('submit', function (event) {
-            event.preventDefault();
-            var columnName = document.getElementById('columnName').value;
-            var boardId = document.getElementById('boardId').value;
-            fetch("{% url 'add_column' %}", {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': '{{ csrf_token }}'
-                },
-                body: JSON.stringify({name: columnName, board_id: boardId})
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.id) {
-                    addNewColumn(data.name, data.id);
-                }
-            });
-            var modal = bootstrap.Modal.getInstance(document.getElementById('newColumnModal'));
-            modal.hide();
-            newColumnForm.reset();
-        });
+    function handleColumnDragStart(event) {
+        event.dataTransfer.setData('text/plain', event.target.id);
+        event.dropEffect = 'move';
+        event.currentTarget.classList.add('dragging');
+    }
 
-        function addNewColumn(name, id) {
-            var columnId = 'column-' + id;
-            var columnHtml = `
-                <div class="col-md-3 mb-3">
-                    <h5>${name}</h5>
-                    <button class="btn btn-primary mb-3" onclick="openNewItemModal('${id}')">Adicionar Novo</button>
-                    <button class="btn btn-danger mb-3" onclick="deleteColumn('${id}')">Excluir Coluna</button>
-                    <div id="${columnId}" class="dropzone">
-                        <!-- Cards go here -->
-                    </div>
-                </div>
-            `;
-            columnsContainer.insertAdjacentHTML('beforeend', columnHtml);
+    function handleColumnDragEnd(event) {
+        event.currentTarget.classList.remove('dragging');
+        updateColumnOrder();
+    }
 
-            var newDropzone = document.getElementById(columnId);
-            newDropzone.addEventListener('dragover', function (event) {
-                event.preventDefault();
-                event.dataTransfer.dropEffect = 'move';
-            });
-            newDropzone.addEventListener('drop', function (event) {
-                handleDrop(event);
-            });
-        }
-
-        var newItemModal = document.getElementById('newItemModal');
-        newItemModal.addEventListener('show.bs.modal', function (event) {
-            var button = event.relatedTarget;
-            var categoryId = button.getAttribute('data-column-id');
-            var modalForm = newItemModal.querySelector('#newItemForm');
-            modalForm.querySelector('#itemCategory').value = categoryId;
-        });
-
-        var newItemForm = document.getElementById('newItemForm');
-        newItemForm.addEventListener('submit', function (event) {
-            event.preventDefault();
-            var form = event.target;
-            var categoryId = form.querySelector('#itemCategory').value;
-            var title = form.querySelector('#itemTitle').value;
-            var description = form.querySelector('#itemDescription').value;
-
-            fetch("{% url 'add_card' %}", {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': '{{ csrf_token }}'
-                },
-                body: JSON.stringify({title: title, description: description, column_id: categoryId})
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.id) {
-                    addNewItem(data.id, title, description, categoryId);
-                }
-            });
-
-            form.reset();
-            var modal = bootstrap.Modal.getInstance(newItemModal);
-            modal.hide();
-        });
-
-        window.openNewItemModal = function (columnId) {
-            var newItemModalInstance = new bootstrap.Modal(document.getElementById('newItemModal'));
-            document.getElementById('newItemForm').querySelector('#itemCategory').value = columnId;
-            newItemModalInstance.show();
-        }
-
-        window.deleteColumn = function (columnId) {
-            if (confirm('Tem certeza de que deseja excluir esta coluna?')) {
-                fetch(`/delete_column/${columnId}/`, {
-                    method: 'DELETE',
-                    headers: {
-                        'X-CSRFToken': '{{ csrf_token }}'
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        var column = document.getElementById('column-' + columnId);
-                        if (column) {
-                            column.parentNode.remove();
-                        }
-                    }
-                });
+    function handleColumnDrop(event) {
+        event.preventDefault();
+        var columnId = event.dataTransfer.getData('text/plain');
+        var column = document.getElementById(columnId);
+        var dropzone = event.target.closest('.column-draggable');
+        if (column && dropzone && column !== dropzone) {
+            var dropzoneIndex = Array.from(columnsContainer.children).indexOf(dropzone);
+            if (event.clientX > dropzone.getBoundingClientRect().left + dropzone.offsetWidth / 2) {
+                dropzoneIndex++;
             }
+            columnsContainer.insertBefore(column, columnsContainer.children[dropzoneIndex]);
+            updateColumnOrder();
         }
+    }
 
-        window.deleteCard = function (cardId) {
-            if (confirm('Tem certeza de que deseja excluir este card?')) {
-                fetch(`/delete_card/${cardId}/`, {
-                    method: 'DELETE',
-                    headers: {
-                        'X-CSRFToken': '{{ csrf_token }}'
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        var card = document.getElementById('card-' + cardId);
-                        if (card) {
-                            card.remove();
-                        }
-                    }
-                });
+    document.querySelectorAll('.column-draggable[draggable="true"]').forEach(function (column) {
+        column.addEventListener('dragstart', handleColumnDragStart);
+        column.addEventListener('dragend', handleColumnDragEnd);
+    });
+
+    columnsContainer.addEventListener('dragover', function (event) {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+    });
+
+    columnsContainer.addEventListener('drop', handleColumnDrop);
+    
+    var cardModal = new bootstrap.Modal(document.getElementById('cardDetailModal'));
+    document.querySelectorAll('.draggable').forEach(card => {
+        card.addEventListener('click', function (event) {
+            // Evitar conflito com drag and drop
+            if (this.classList.contains('dragging')) {
+                return;
             }
-        }
 
-        function addNewItem(id, title, description, columnId) {
-            var newItem = document.createElement('div');
-            newItem.classList.add('card', 'mb-2', 'draggable');
-            newItem.setAttribute('draggable', 'true');
-            newItem.setAttribute('id', 'card-' + id);
-            newItem.innerHTML = `
-                <div class="card-body">
-                    <h5 class="card-title">${title}</h5>
-                    <p class="card-text">${description}</p>
-                    <button class="btn btn-danger btn-sm" onclick="deleteCard('${id}')">Excluir</button>
-                </div>
-            `;
+            var details = this.dataset.details || 'Sem detalhes disponíveis';
+            document.getElementById('cardDetailsContent').textContent = details;
 
-            newItem.addEventListener('dragstart', handleDragStart);
-            newItem.addEventListener('dragend', handleDragEnd);
+            cardModal.show();
+        });
 
-            document.getElementById('column-' + columnId).appendChild(newItem);
-        }
-
-        function handleDragStart(event) {
+        card.addEventListener('dragstart', function (event) {
             event.dataTransfer.setData('text/plain', event.target.id);
             event.dropEffect = 'move';
-        }
-
-        function handleDragEnd(event) {
-            event.preventDefault();
-        }
-
-        function handleDrop(event) {
-            event.preventDefault();
-            var cardId = event.dataTransfer.getData('text/plain');
-            var card = document.getElementById(cardId);
-            var dropzone = event.currentTarget;
-            if (card && dropzone) {
-                fetch("{% url 'move_card' %}", {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': '{{ csrf_token }}'
-                    },
-                    body: JSON.stringify({
-                        card_id: cardId.replace('card-', ''),
-                        new_column_id: dropzone.id.replace('column-', ''),
-                        new_order: dropzone.children.length
-                    })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        dropzone.appendChild(card);
-                    }
-                });
-            }
-        }
-
-        document.querySelectorAll('.dropzone').forEach(function (dropzone) {
-            dropzone.addEventListener('dragover', function (event) {
-                event.preventDefault();
-                event.dataTransfer.dropEffect = 'move';
-            });
-
-            dropzone.addEventListener('drop', function (event) {
-                handleDrop(event);
-            });
+            this.classList.add('dragging');
         });
 
-        document.querySelectorAll('.draggable').forEach(function (draggable) {
-            draggable.addEventListener('dragstart', handleDragStart);
-            draggable.addEventListener('dragend', handleDragEnd);
+        card.addEventListener('dragend', function () {
+            this.classList.remove('dragging');
         });
     });
+
+    function handleDrop(event) {
+        event.preventDefault();
+        var cardId = event.dataTransfer.getData('text/plain');
+        var card = document.getElementById(cardId);
+        var dropzone = event.target.closest('.dropzone');
+        if (card && dropzone) {
+            fetch("{% url 'move_card' %}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({
+                    card_id: cardId.replace('card-', ''),
+                    new_column_id: dropzone.id.replace('column-cards-', ''),
+                    new_order: dropzone.children.length
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    dropzone.appendChild(card);
+                    card.style.opacity = '';
+                }
+            });
+        } else {
+            var originalDropzone = document.getElementById('column-cards-' + card.dataset.column);
+            originalDropzone.appendChild(card);
+        }
+    }
+    
+    var addColumnBtn = document.getElementById('addColumnBtn');
+    var deleteBoardBtn = document.getElementById('deleteBoardBtn');
+    var boardId = document.getElementById('boardId').value;
+
+    addColumnBtn.addEventListener('click', function () {
+        var newColumnModal = new bootstrap.Modal(document.getElementById('newColumnModal'));
+        newColumnModal.show();
+    });
+
+    deleteBoardBtn.addEventListener('click', function () {
+        if (confirm('Tem certeza de que deseja excluir este quadro?')) {
+            fetch(`/delete_board/${boardId}/`, {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    window.location.href = "{% url 'board_list' %}";
+                }
+            });
+        }
+    });
+
+    var newColumnForm = document.getElementById('newColumnForm');
+    newColumnForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        var columnName = document.getElementById('columnName').value;
+        var boardId = document.getElementById('boardId').value;
+        var isMovable = document.getElementById('isMovable').checked;
+        fetch("{% url 'add_column' %}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({name: columnName, board_id: boardId, is_movable: isMovable})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.id) {
+                addNewColumn(data.name, data.id, data.is_movable);
+            }
+        });
+        var modal = bootstrap.Modal.getInstance(document.getElementById('newColumnModal'));
+        modal.hide();
+        newColumnForm.reset();
+    });
+
+    function addNewColumn(name, id, isMovable) {
+        var columnId = 'column-' + id;
+        var columnHtml = `
+            <div id="${columnId}" class="column column-draggable" ${isMovable ? 'draggable="true"' : 'data-ismovable="false"'}>
+                <h5>${name}</h5>
+                <button class="btn btn-primary mb-3" onclick="openNewItemModal('${id}')">Adicionar Novo</button>
+                ${isMovable ? '<button class="btn btn-danger mb-3" onclick="deleteColumn(' + id + ')">Excluir Coluna</button>' : ''}
+                <div id="column-cards-${id}" class="dropzone">
+                    <!-- Cards go here -->
+                </div>
+            </div>
+        `;
+        document.getElementById('columnsContainer').insertAdjacentHTML('beforeend', columnHtml);
+
+        var newDropzone = document.getElementById('column-cards-' + id);
+        newDropzone.addEventListener('dragover', function (event) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+        });
+        newDropzone.addEventListener('drop', function (event) {
+            handleDrop(event);
+        });
+
+        if (isMovable) {
+            var newColumn = document.getElementById(columnId);
+            newColumn.addEventListener('dragstart', handleColumnDragStart);
+            newColumn.addEventListener('dragend', handleColumnDragEnd);
+        }
+    }
+
+    var newItemForm = document.getElementById('newItemForm');
+    newItemForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        var title = document.getElementById('itemTitle').value;
+        var description = document.getElementById('itemDescription').value;
+        var columnId = document.getElementById('itemCategory').value;
+
+        fetch("{% url 'add_card' %}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({title: title, description: description, column_id: columnId})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.id) {
+                addNewCard(data.id, title, description, columnId);
+            }
+        });
+
+        var modal = bootstrap.Modal.getInstance(document.getElementById('newItemModal'));
+        modal.hide();
+        newItemForm.reset();
+    });
+
+    function addNewCard(id, title, description, columnId) {
+        var newCard = document.createElement('div');
+        newCard.classList.add('card', 'mb-2', 'draggable');
+        newCard.setAttribute('draggable', 'true');
+        newCard.setAttribute('id', 'card-' + id);
+        newCard.dataset.details = description;
+        newCard.dataset.column = columnId;
+        newCard.innerHTML = `
+            <div class="card-body">
+                <h5 class="card-title">${title}</h5>
+                <p class="card-text">${description}</p>
+                <button class="btn btn-danger btn-sm" onclick="deleteCard('${id}')">Excluir</button>
+            </div>
+        `;
+
+        newCard.addEventListener('click', function (event) {
+            if (this.classList.contains('dragging')) {
+                return;
+            }
+
+            var details = this.dataset.details || 'Sem detalhes disponíveis';
+            document.getElementById('cardDetailsContent').textContent = details;
+
+            cardModal.show();
+        });
+
+        newCard.addEventListener('dragstart', function (event) {
+            event.dataTransfer.setData('text/plain', event.target.id);
+            event.dropEffect = 'move';
+            this.classList.add('dragging');
+        });
+
+        newCard.addEventListener('dragend', function () {
+            this.classList.remove('dragging');
+        });
+
+        document.getElementById('column-cards-' + columnId).appendChild(newCard);
+    }
+
+    window.openNewItemModal = function (columnId) {
+        var newItemModalInstance = new bootstrap.Modal(document.getElementById('newItemModal'));
+        document.getElementById('newItemForm').querySelector('#itemCategory').value = columnId;
+        newItemModalInstance.show();
+    }
+
+    window.deleteColumn = function (columnId) {
+        if (confirm('Tem certeza de que deseja excluir esta coluna?')) {
+            fetch(`/delete_column/${columnId}/`, {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    var column = document.getElementById('column-' + columnId);
+                    if (column) {
+                        column.parentNode.remove();
+                    }
+                }
+            });
+        }
+    }
+
+    window.deleteCard = function (cardId) {
+        if (confirm('Tem certeza de que deseja excluir este card?')) {
+            fetch(`/delete_card/${cardId}/`, {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    var card = document.getElementById('card-' + cardId);
+                    if (card) {
+                        card.remove();
+                    }
+                }
+            });
+        }
+    }
+
+    document.querySelectorAll('.dropzone').forEach(function (dropzone) {
+        dropzone.addEventListener('dragover', function (event) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+        });
+
+        dropzone.addEventListener('drop', function (event) {
+            handleDrop(event);
+        });
+    });
+
+    document.querySelectorAll('.column-draggable[draggable="true"]').forEach(function (column) {
+        column.addEventListener('dragstart', handleColumnDragStart);
+        column.addEventListener('dragend', handleColumnDragEnd);
+    });
+});
 </script>
 {% endblock %}
